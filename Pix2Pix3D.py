@@ -884,7 +884,7 @@ class CycleGAN():
         print(size)
         if stride is None:
             stride = size
-
+        # git test
         i_max = (org_img_size[0] // stride) + 1 - (size // stride)
         j_max = (org_img_size[1] // stride) + 1 - (size // stride)
         k_max = (org_img_size[2] // stride) + 1 - (size // stride)
