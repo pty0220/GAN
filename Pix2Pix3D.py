@@ -30,7 +30,7 @@ import keras.backend as K
 import tensorflow as tf
 
 #os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-strategy = tf.distribute.MirroredStrategy()
+#strategy = tf.distribute.MirroredStrategy()
 
 
 class CycleGAN():
