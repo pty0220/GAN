@@ -9,6 +9,7 @@ from keras.optimizers import Adam
 from keras.models import Model
 from keras.engine.topology import Network
 import cv2
+
 from scipy import ndimage
 from keras.preprocessing.image import ImageDataGenerator
 import SimpleITK as sitk
@@ -28,18 +29,20 @@ import keras.backend as K
 
 import tensorflow as tf
 
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+#os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+strategy = tf.distribute.MirroredStrategy()
 
 
 class CycleGAN():
     def __init__(self):
+
 
         self.root_dir = 'F:/model/Medical-Image-Synthesis-multiview-Resnet_patch3D/'
         self.retrain_path = False#'20210105-121719-T1-CT_cropped_bias_P9_LR_0.0002_RL_9_DF_64_GF_32_RF_70'   #20201208-180043-T1-CT_cropped_bias_P9_LR_0.0002_RL_9_DF_64_GF_32_RF_70' previous good model
         self.retrain_epoch = False
 
         # Parse input arguments
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(0)  # Select GPU device±
+        #os.environ["CUDA_VISIBLE_DEVICES"] = str(0)  # Select GPU device±
 
         # data location
         self.volume_folder = 'T1-CT_cropped_bias_P9'  # 'T1-CT_cropped_bias_NS2' #'T1-CT_brain'
@@ -104,10 +107,10 @@ class CycleGAN():
         # ===== Model parameters ======
         # Training parameters
         self.lambda_AB = 10.0  # Cyclic loss weight A_2_B
-        self.lambda_peak_diff = 5.0
-        self.lambda_DSC_FWHM = 1.0
-        self.lambda_adversarial = 1.0  # Weight for loss from discriminator guess on synthetic volumes
-        self.lambda_gdl = 1.0
+        self.lambda_peak_diff = 1.0
+        self.lambda_DSC_FWHM = 2.0
+        self.lambda_adversarial = 2.0  # Weight for loss from discriminator guess on synthetic volumes
+        self.lambda_gdl = 2.0
         # self.lambda_identity = 1.0
         self.learning_rate_D = 2e-4  # 2.4072578979390963e-05#0.00013173546847239113
         self.learning_rate_G = 2e-4  # 2.4072578979390963e-05#0.00013173546847239113
