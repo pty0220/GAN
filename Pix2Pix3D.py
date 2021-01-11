@@ -28,9 +28,10 @@ import sys
 import keras.backend as K
 
 import tensorflow as tf
+from contextlib import redirect_stdout
 
-#os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-strategy = tf.distribute.MirroredStrategy()
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+#strategy = tf.distribute.MirroredStrategy()
 
 
 class CycleGAN():
@@ -38,17 +39,17 @@ class CycleGAN():
 
 
         self.root_dir = 'F:/model/Medical-Image-Synthesis-multiview-Resnet_patch3D/'
-        self.retrain_path = False#'20210105-121719-T1-CT_cropped_bias_P9_LR_0.0002_RL_9_DF_64_GF_32_RF_70'   #20201208-180043-T1-CT_cropped_bias_P9_LR_0.0002_RL_9_DF_64_GF_32_RF_70' previous good model
+        self.retrain_path = False
         self.retrain_epoch = False
 
         # Parse input arguments
-        #os.environ["CUDA_VISIBLE_DEVICES"] = str(0)  # Select GPU device±
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(0)  # Select GPU device±
 
         # data location
         self.volume_folder = 'T1-CT_cropped_bias_P9'  # 'T1-CT_cropped_bias_NS2' #'T1-CT_brain'
 
         self.patch = False
-        self.augmentation = True
+        self.augmentation = False
         self.padding_size = (140, 140, 140)
         # ======= Data ==========
         print('--- Caching data ---')
@@ -107,10 +108,10 @@ class CycleGAN():
         # ===== Model parameters ======
         # Training parameters
         self.lambda_AB = 10.0  # Cyclic loss weight A_2_B
+        self.lambda_adversarial = 1.0  # Weight for loss from discriminator guess on synthetic volumes
+        self.lambda_gdl = 1.0
         self.lambda_peak_diff = 1.0
         self.lambda_DSC_FWHM = 2.0
-        self.lambda_adversarial = 2.0  # Weight for loss from discriminator guess on synthetic volumes
-        self.lambda_gdl = 2.0
         # self.lambda_identity = 1.0
         self.learning_rate_D = 2e-4  # 2.4072578979390963e-05#0.00013173546847239113
         self.learning_rate_G = 2e-4  # 2.4072578979390963e-05#0.00013173546847239113
@@ -119,7 +120,7 @@ class CycleGAN():
         self.synthetic_pool_size = 50  # Size of volume pools used for training the discriminators
         self.beta_1 = 0.5  # Adam parameter
         self.beta_2 = 0.999  # Adam parameter
-        self.batch_size = 1  # Number of volumes per batch
+        self.batch_size = 1 # Number of volumes per batch
         self.epochs = 500#400  # choose multiples of 20 since the models are saved each 20th epoch
 
         self.save_models = True  # Save or not the generator and discriminator models
@@ -135,7 +136,7 @@ class CycleGAN():
         self.use_dropout = True  # Dropout in residual blocks
         self.use_bias = True  # Use bias
         self.use_linear_decay = True  # Linear decay of learning rate, for both discriminators and generators
-        self.decay_epoch = 1000 #201 # The epoch where the linear decay of the learning rates start
+        self.decay_epoch = 101 #201 # The epoch where the linear decay of the learning rates start
         self.use_patchgan = True  # PatchGAN - if false the discriminator learning rate should be decreased
         self.use_resize_convolution = False  # Resize convolution - instead of transpose convolution in deconvolution layers (uk) - can reduce checkerboard artifacts but the blurring might affect the cycle-consistency
         self.discriminator_sigmoid = True
@@ -186,7 +187,7 @@ class CycleGAN():
 
         # Define full CycleGAN model, used for training the generators
         real_A = Input(shape=self.input_shape_A, name='real_A')
-        #  real_B = Input(shape=self.input_shape_A, name='real_B')
+        # real_B = Input(shape=self.input_shape_A, name='real_B')
 
         synthetic_B = self.G_A2B(real_A)
         #   identity_B = self.G_A2B(real_B)
@@ -195,13 +196,13 @@ class CycleGAN():
         # Compile full CycleGAN model
         # model_outputs = [synthetic_B, dB_guess_synthetic, synthetic_B]
         # model_outputs = [synthetic_B, dB_guess_synthetic, synthetic_B, synthetic_B]
-        model_outputs = [synthetic_B, dB_guess_synthetic,  synthetic_B, synthetic_B]  # ,   identity_B]
+        model_outputs = [synthetic_B, dB_guess_synthetic, synthetic_B]  # ,   identity_B]
         # compile_losses = [self.mpd, self.lse, self.gdl]
         # compile_losses = [self.mpd, self.lse, self.gdl ,self.threshold_mae]
-        compile_losses = [self.mpd, self.lse, self.gdl, self.peak_diff]  # ,self.mpd]
+        compile_losses = [self.mpd, self.lse, self.gdl]  # ,self.mpd]
 
         #  compile_weights = [self.lambda_AB, self.lambda_adversarial, self.lambda_gdl]
-        compile_weights = [self.lambda_AB, self.lambda_adversarial, self.lambda_gdl, self.lambda_peak_diff]  # , self.lambda_identity]
+        compile_weights = [self.lambda_AB, self.lambda_adversarial, self.lambda_gdl]  # , self.lambda_identity]
 
         self.G_model = Model(inputs=[real_A],  # real_B],
                              outputs=model_outputs,
@@ -264,6 +265,7 @@ class CycleGAN():
         # config = tf.ConfigProto()
         # config.gpu_options.allow_growth = True
         # K.tensorflow_backend.set_session(tf.Session(config=config))
+
 
         # ======= Initialize training ==========
         sys.stdout.flush()
@@ -428,7 +430,7 @@ class CycleGAN():
 
             # ======= Generator training ==========
             # Reconstructed volumes need to match originals, discriminators need to predict ones
-            target_data = [real_volumes_B, ones, real_volumes_B, real_volumes_B]  # , real_volumes_B]
+            target_data = [real_volumes_B, ones, real_volumes_B]  # , real_volumes_B]
 
             # Train generators on batch
             G_loss = []
@@ -599,7 +601,7 @@ class CycleGAN():
     def peak_diff(self, y_true, y_pred):
         y_true = tf.multiply(y_true, self.brain_mask)
         y_pred = tf.multiply(y_pred, self.brain_mask)
-        loss = tf.abs(tf.keras.backend.max(y_pred) - tf.keras.backend.max(y_true))
+        loss = tf.abs(tf.keras.backend.max(y_pred) - tf.keras.backend.max(y_true))/tf.keras.backend.max(y_true)
         return loss
 
     def DSC_FWHM(self, y_true, y_pred):
@@ -1075,8 +1077,14 @@ class CycleGAN():
         testA_volume_names = [os.path.basename(x) for x in testA_volume_names]
         testB_volume_names = [os.path.basename(x) for x in testB_volume_names]
 
+        ### test samll number
+        # del trainA_volume_names[100:1250]
+        # del trainB_volume_names[100:1250]
+
         del trainA_volume_names[1:len(trainA_volume_names):2]
         del trainB_volume_names[1:len(trainB_volume_names):2]
+
+
         # del testA_volume_names[1:len(trainA_volume_names):2]
         # del testB_volume_names[1:len(trainA_volume_names):2]
 
@@ -1247,6 +1255,61 @@ class CycleGAN():
 
         return return_val
 
+    def create_segmented_volume(self, source_volume, target_volume):
+
+        # for idx in range(source_volume.shape[1]):
+        #     source_slice = source_volume[:, idx, :]
+        #     target_slice = target_volume[:, idx, :]
+        #
+        #     save_image(source_slice, os.path.join(opt['root_dir'], 'original_images', 'A'),
+        #                'slice_' + str(idx) + '.png')
+        #     save_image(target_slice, os.path.join(opt['root_dir'], 'original_images', 'B'),
+        #                'slice_' + str(idx) + '.png')
+
+        ret, img_th = cv2.threshold(source_volume, 100, 1, 0)
+
+        # Get largest continuous image
+        label_im, nb_labels = ndimage.label(img_th)
+        sizes = ndimage.sum(img_th, label_im, range(nb_labels + 1))
+        mask = sizes == np.max(sizes)
+        binary_img = mask[label_im]
+
+        # binary_img  = ndimage.binary_dilation(binary_img )
+        # closed_volume = ndimage.binary_closing(binary_img).astype(np.int)
+
+        kernel = np.ones((10, 10), np.uint8)
+
+        # close holes & erosion
+        closed_volume = cv2.morphologyEx(np.array(binary_img).astype(np.uint8), cv2.MORPH_CLOSE, kernel)
+        closed_volume = ndimage.binary_erosion(closed_volume)
+
+        # binary fill holes
+        temp = np.zeros_like(source_volume)
+        for idx in range(closed_volume.shape[0]):
+            closed_slice = closed_volume[idx, :, :]
+            mask_slice = ndimage.morphology.binary_fill_holes(closed_slice)
+            temp[idx, :, :] = mask_slice
+        temp = ndimage.binary_dilation(temp)
+        mask_volume = np.array(temp)
+
+        # fill background
+        source_denoised_volume = np.where(mask_volume, source_volume, np.zeros_like(source_volume))
+        target_denoised_volume = np.where(mask_volume, target_volume,
+                                          np.ones_like(target_volume) * -1000)  # np.zeros_like(target_volume)
+
+        # check denoised image
+        # for idx in range(mask_volume.shape[0]):
+        #     source_slice = source_denoised_volume[idx, :, :]
+        #     target_slice = target_denoised_volume[idx, :, :]
+        #     mask_slice = mask_volume[idx, :, :]
+        #     save_image(mask_slice, os.path.join(opt['root_dir'], 'mask'), 'slice_' + str(idx) + '.png')
+        #
+        #     save_image(source_slice, os.path.join(opt['root_dir'], 'denoised_images', 'A'),
+        #                'slice_' + str(idx) + '.png')
+        #     save_image(target_slice, os.path.join(opt['root_dir'], 'denoised_images', 'B'),
+        #                'slice_' + str(idx) + '.png')
+
+        return (source_denoised_volume, target_denoised_volume)
 
     def segmentation_mask(self, arr, threshold):
 
@@ -1321,61 +1384,6 @@ class CycleGAN():
 
 
 
-    def create_segmented_volume(self, source_volume, target_volume):
-
-        # for idx in range(source_volume.shape[1]):
-        #     source_slice = source_volume[:, idx, :]
-        #     target_slice = target_volume[:, idx, :]
-        #
-        #     save_image(source_slice, os.path.join(opt['root_dir'], 'original_images', 'A'),
-        #                'slice_' + str(idx) + '.png')
-        #     save_image(target_slice, os.path.join(opt['root_dir'], 'original_images', 'B'),
-        #                'slice_' + str(idx) + '.png')
-
-        ret, img_th = cv2.threshold(source_volume, 100, 1, 0)
-
-        # Get largest continuous image
-        label_im, nb_labels = ndimage.label(img_th)
-        sizes = ndimage.sum(img_th, label_im, range(nb_labels + 1))
-        mask = sizes == np.max(sizes)
-        binary_img = mask[label_im]
-
-        # binary_img  = ndimage.binary_dilation(binary_img )
-        # closed_volume = ndimage.binary_closing(binary_img).astype(np.int)
-
-        kernel = np.ones((10, 10), np.uint8)
-
-        # close holes & erosion
-        closed_volume = cv2.morphologyEx(np.array(binary_img).astype(np.uint8), cv2.MORPH_CLOSE, kernel)
-        closed_volume = ndimage.binary_erosion(closed_volume)
-
-        # binary fill holes
-        temp = np.zeros_like(source_volume)
-        for idx in range(closed_volume.shape[0]):
-            closed_slice = closed_volume[idx, :, :]
-            mask_slice = ndimage.morphology.binary_fill_holes(closed_slice)
-            temp[idx, :, :] = mask_slice
-        temp = ndimage.binary_dilation(temp)
-        mask_volume = np.array(temp)
-
-        # fill background
-        source_denoised_volume = np.where(mask_volume, source_volume, np.zeros_like(source_volume))
-        target_denoised_volume = np.where(mask_volume, target_volume,
-                                          np.ones_like(target_volume) * -1000)  # np.zeros_like(target_volume)
-
-        # check denoised image
-        # for idx in range(mask_volume.shape[0]):
-        #     source_slice = source_denoised_volume[idx, :, :]
-        #     target_slice = target_denoised_volume[idx, :, :]
-        #     mask_slice = mask_volume[idx, :, :]
-        #     save_image(mask_slice, os.path.join(opt['root_dir'], 'mask'), 'slice_' + str(idx) + '.png')
-        #
-        #     save_image(source_slice, os.path.join(opt['root_dir'], 'denoised_images', 'A'),
-        #                'slice_' + str(idx) + '.png')
-        #     save_image(target_slice, os.path.join(opt['root_dir'], 'denoised_images', 'B'),
-        #                'slice_' + str(idx) + '.png')
-
-        return (source_denoised_volume, target_denoised_volume)
 
     def read_nii(self, path, file_name, source=None):
 
