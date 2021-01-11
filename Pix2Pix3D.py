@@ -1067,7 +1067,7 @@ class CycleGAN():
         def split(lists):
             t = 0
             for x in lists:
-                if t%2 == 0:
+                if t%100 == 0:
                     names = os.path.basename(x)
                 t = t+1
             return names
