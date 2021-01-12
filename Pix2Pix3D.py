@@ -38,7 +38,7 @@ class CycleGAN():
     def __init__(self):
 
 
-        self.root_dir = 'F:/model/Medical-Image-Synthesis-multiview-Resnet_patch3D/'
+        self.root_dir = 'model/'
         self.retrain_path = False
         self.retrain_epoch = False
 
@@ -120,7 +120,7 @@ class CycleGAN():
         self.synthetic_pool_size = 50  # Size of volume pools used for training the discriminators
         self.beta_1 = 0.5  # Adam parameter
         self.beta_2 = 0.999  # Adam parameter
-        self.batch_size = 1 # Number of volumes per batch
+        self.batch_size = 2 # Number of volumes per batch
         self.epochs = 500#400  # choose multiples of 20 since the models are saved each 20th epoch
 
         self.save_models = True  # Save or not the generator and discriminator models
@@ -196,13 +196,13 @@ class CycleGAN():
         # Compile full CycleGAN model
         # model_outputs = [synthetic_B, dB_guess_synthetic, synthetic_B]
         # model_outputs = [synthetic_B, dB_guess_synthetic, synthetic_B, synthetic_B]
-        model_outputs = [synthetic_B, dB_guess_synthetic, synthetic_B]  # ,   identity_B]
+        model_outputs = [synthetic_B, dB_guess_synthetic, synthetic_B, synthetic_B]  # ,   identity_B]
         # compile_losses = [self.mpd, self.lse, self.gdl]
         # compile_losses = [self.mpd, self.lse, self.gdl ,self.threshold_mae]
-        compile_losses = [self.mpd, self.lse, self.gdl]  # ,self.mpd]
+        compile_losses = [self.mpd, self.lse, self.gdl, self.peak_diff]  # ,self.mpd]
 
         #  compile_weights = [self.lambda_AB, self.lambda_adversarial, self.lambda_gdl]
-        compile_weights = [self.lambda_AB, self.lambda_adversarial, self.lambda_gdl]  # , self.lambda_identity]
+        compile_weights = [self.lambda_AB, self.lambda_adversarial, self.lambda_gdl, self.lambda_peak_diff]  # , self.lambda_identity]
 
         self.G_model = Model(inputs=[real_A],  # real_B],
                              outputs=model_outputs,
@@ -430,7 +430,7 @@ class CycleGAN():
 
             # ======= Generator training ==========
             # Reconstructed volumes need to match originals, discriminators need to predict ones
-            target_data = [real_volumes_B, ones, real_volumes_B]  # , real_volumes_B]
+            target_data = [real_volumes_B, ones, real_volumes_B, real_volumes_B]  # , real_volumes_B]
 
             # Train generators on batch
             G_loss = []
@@ -1078,8 +1078,8 @@ class CycleGAN():
         testB_volume_names = [os.path.basename(x) for x in testB_volume_names]
 
         ### test samll number
-        # del trainA_volume_names[100:1250]
-        # del trainB_volume_names[100:1250]
+        # del trainA_volume_names[10:1250]  
+        # del trainB_volume_names[10:1250]
 
         del trainA_volume_names[1:len(trainA_volume_names):2]
         del trainB_volume_names[1:len(trainB_volume_names):2]
